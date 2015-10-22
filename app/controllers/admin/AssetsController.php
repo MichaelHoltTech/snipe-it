@@ -30,6 +30,7 @@ use Paginator;
 use Manufacturer; //for embedded-create
 use Artisan;
 use Symfony\Component\Console\Output\BufferedOutput;
+use CustomField;
 
 
 class AssetsController extends AdminController
@@ -242,9 +243,26 @@ class AssetsController extends AdminController
             // Redirect to the asset management page with error
             return Redirect::to('hardware')->with('error', Lang::get('admin/hardware/message.does_not_exist'));
         }
+        
+        $input=Input::all();
+        // return "INPUT IS: <pre>".print_r($input,true)."</pre>";
+        $rules=$asset->validationRules($assetId);
+        if($asset->model->fieldset)
+        {
+          foreach($asset->model->fieldset->fields AS $field) {
+            $input[$field->db_column_name()]=$input['fields'][$field->db_column_name()];
+            $asset->{$field->db_column_name()}=$input[$field->db_column_name()];
+          }
+          $rules+=$asset->model->fieldset->validation_rules();
+          unset($input['fields']);
+        }
+        
+        //return "Rules: <pre>".print_r($rules,true)."</pre>";
 
         //attempt to validate
-        $validator = Validator::make(Input::all(), $asset->validationRules($assetId));
+        $validator = Validator::make($input,  $rules );
+        
+        $custom_errors=[];
 
         if ($validator->fails())
         {
@@ -264,7 +282,7 @@ class AssetsController extends AdminController
             if (e(Input::get('warranty_months')) == '') {
                 $asset->warranty_months =  NULL;
             } else {
-                $asset->warranty_months        = e(Input::get('warranty_months'));
+                $asset->warranty_months = e(Input::get('warranty_months'));
             }
 
             if (e(Input::get('purchase_cost')) == '') {
@@ -298,7 +316,7 @@ class AssetsController extends AdminController
             }
 
             $checkModel = Config::get('app.url').'/api/models/'.e(Input::get('model_id')).'/check';
-            $asset->mac_address = ($checkModel == true) ? e(Input::get('mac_address')) : NULL;
+            //$asset->mac_address = ($checkModel == true) ? e(Input::get('mac_address')) : NULL;
 
             // Update the asset data
             $asset->name            		= e(Input::get('name'));
@@ -1173,7 +1191,7 @@ class AssetsController extends AdminController
             }
         }
 
-        $rows[] = array(
+        $row = array(
             'checkbox'      =>'<div class="text-center"><input type="checkbox" name="edit_asset['.$asset->id.']" class="one_required"></div>',
             'id'        => $asset->id,
             'name'          => '<a title="'.$asset->name.'" href="hardware/'.$asset->id.'/view">'.$asset->name.'</a>',
@@ -1190,6 +1208,10 @@ class AssetsController extends AdminController
             'change'        => ($inout) ? $inout : '',
             'actions'       => ($actions) ? $actions : ''
             );
+        foreach(CustomField::all() AS $field) {
+          $row[$field->db_column_name()]=$asset->{$field->db_column_name()};
+        }
+        $rows[]=$row;
       }
 
       $data = array('total'=>$assetCount, 'rows'=>$rows);
